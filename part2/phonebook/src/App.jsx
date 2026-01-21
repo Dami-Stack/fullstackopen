@@ -1,69 +1,130 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Filter from "./components/Filter";
 import PersonForm from "./components/PersonForm";
 import Persons from "./components/Persons";
+import Notification from "./components/Notification";
+import personService from "./services/persons";
 
 const App = () => {
-  const [persons, setPersons] = useState([
-    { name: "Arto Hellas", number: "040-123456", id: 1 },
-    { name: "Ada Lovelace", number: "39-44-5323523", id: 2 },
-    { name: "Dan Abramov", number: "12-43-234345", id: 3 },
-    { name: "Mary Poppendieck", number: "39-23-6423122", id: 4 },
-  ]);
-
+  const [persons, setPersons] = useState([]);
   const [newName, setNewName] = useState("");
   const [newNumber, setNewNumber] = useState("");
   const [filter, setFilter] = useState("");
+  const [message, setMessage] = useState(null);
+  const [messageType, setMessageType] = useState(null);
+
+  useEffect(() => {
+    personService.getAll().then((data) => {
+      setPersons(data);
+    });
+  }, []);
+
+  const showMessage = (text, type = "success") => {
+    setMessage(text);
+    setMessageType(type);
+    setTimeout(() => {
+      setMessage(null);
+      setMessageType(null);
+    }, 4000);
+  };
 
   const addPerson = (event) => {
     event.preventDefault();
 
-    const nameExists = persons.some(
-      (person) => person.name.toLowerCase() === newName.toLowerCase(),
+    const existingPerson = persons.find(
+      (p) => p.name.toLowerCase() === newName.toLowerCase(),
     );
 
-    if (nameExists) {
-      alert(`${newName} is already added to phonebook`);
+    if (existingPerson) {
+      const confirmUpdate = window.confirm(
+        `${existingPerson.name} is already added. Replace the old number?`,
+      );
+
+      if (confirmUpdate) {
+        const updatedPerson = {
+          ...existingPerson,
+          number: newNumber,
+        };
+
+        personService
+          .update(existingPerson.id, updatedPerson)
+          .then((returnedPerson) => {
+            setPersons(
+              persons.map((p) =>
+                p.id !== existingPerson.id ? p : returnedPerson,
+              ),
+            );
+            showMessage(`Updated ${returnedPerson.name}`);
+            setNewName("");
+            setNewNumber("");
+          })
+          .catch(() => {
+            showMessage(
+              `Information of ${existingPerson.name} has already been removed from server`,
+              "error",
+            );
+            setPersons(persons.filter((p) => p.id !== existingPerson.id));
+          });
+      }
       return;
     }
 
     const personObject = {
       name: newName,
       number: newNumber,
-      id: persons.length + 1,
     };
 
-    setPersons(persons.concat(personObject));
-    setNewName("");
-    setNewNumber("");
+    personService.create(personObject).then((returnedPerson) => {
+      setPersons(persons.concat(returnedPerson));
+      showMessage(`Added ${returnedPerson.name}`);
+      setNewName("");
+      setNewNumber("");
+    });
   };
 
-  const personsToShow =
-    filter === ""
-      ? persons
-      : persons.filter((person) =>
-          person.name.toLowerCase().includes(filter.toLowerCase()),
-        );
+  const deletePerson = (id, name) => {
+    if (window.confirm(`Delete ${name}?`)) {
+      personService
+        .remove(id)
+        .then(() => {
+          setPersons(persons.filter((p) => p.id !== id));
+          showMessage(`Deleted ${name}`);
+        })
+        .catch(() => {
+          showMessage(
+            `Information of ${name} was already removed from server`,
+            "error",
+          );
+          setPersons(persons.filter((p) => p.id !== id));
+        });
+    }
+  };
+
+  const personsToShow = filter
+    ? persons.filter((p) => p.name.toLowerCase().includes(filter.toLowerCase()))
+    : persons;
 
   return (
     <div>
       <h2>Phonebook</h2>
 
-      <Filter filter={filter} onChange={(e) => setFilter(e.target.value)} />
+      <Notification message={message} type={messageType} />
+
+      <Filter filter={filter} setFilter={setFilter} />
 
       <h3>Add a new</h3>
 
       <PersonForm
-        onSubmit={addPerson}
+        addPerson={addPerson}
         newName={newName}
+        setNewName={setNewName}
         newNumber={newNumber}
-        onNameChange={(e) => setNewName(e.target.value)}
-        onNumberChange={(e) => setNewNumber(e.target.value)}
+        setNewNumber={setNewNumber}
       />
 
       <h3>Numbers</h3>
 
-      <Persons persons={personsToShow} />
+      <Persons persons={personsToShow} deletePerson={deletePerson} />
     </div>
   );
 };
