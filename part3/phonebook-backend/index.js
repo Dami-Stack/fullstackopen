@@ -8,8 +8,28 @@ const persons = [
   { id: "4", name: "Mary Poppendieck", number: "39-23-6423122" },
 ];
 
+// get all persons
 app.get("/api/persons", (request, response) => {
   response.json(persons);
+});
+
+// get single person by id
+app.get("/api/persons/:id", (request, response) => {
+  const id = request.params.id;
+  const person = persons.find((p) => p.id === id);
+
+  if (person) {
+    response.json(person);
+  } else {
+    response.status(404).json({ error: "person not found" });
+  }
+});
+
+
+app.use((request, response) => {
+  response.status(404).json({
+    error: "unknown endpoint",
+  });
 });
 
 const PORT = 3001;
