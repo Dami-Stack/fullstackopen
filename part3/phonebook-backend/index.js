@@ -1,10 +1,28 @@
 const express = require("express");
+const morgan = require("morgan");
+const cors = require("cors");
+
 const app = express();
 
-// Middleware to parse JSON bodies (REQUIRED for POST)
+// --------------------
+// Middleware
+// --------------------
+app.use(cors());
 app.use(express.json());
 
-// Hardcoded phonebook data (3.1)
+// Custom morgan token to log request body (3.8)
+morgan.token("body", (request) => {
+  return JSON.stringify(request.body);
+});
+
+// Morgan logging middleware (3.7 + 3.8)
+app.use(
+  morgan(":method :url :status :res[content-length] - :response-time ms :body"),
+);
+
+// --------------------
+// Data
+// --------------------
 let persons = [
   { id: "1", name: "Arto Hellas", number: "040-123456" },
   { id: "2", name: "Ada Lovelace", number: "39-44-5323523" },
@@ -12,16 +30,16 @@ let persons = [
   { id: "4", name: "Mary Poppendieck", number: "39-23-6423122" },
 ];
 
-// ----------------------------------------------------
+// --------------------
+// Routes
+// --------------------
+
 // 3.1 – Get all persons
-// ----------------------------------------------------
 app.get("/api/persons", (request, response) => {
   response.json(persons);
 });
 
-// ----------------------------------------------------
 // 3.2 – Info page
-// ----------------------------------------------------
 app.get("/info", (request, response) => {
   response.send(`
     <p>Phonebook has info for ${persons.length} people</p>
@@ -29,12 +47,9 @@ app.get("/info", (request, response) => {
   `);
 });
 
-// ----------------------------------------------------
-// 3.3 – Get single person by id
-// ----------------------------------------------------
+// 3.3 – Get one person
 app.get("/api/persons/:id", (request, response) => {
-  const id = request.params.id;
-  const person = persons.find((p) => p.id === id);
+  const person = persons.find((p) => p.id === request.params.id);
 
   if (person) {
     response.json(person);
@@ -43,33 +58,23 @@ app.get("/api/persons/:id", (request, response) => {
   }
 });
 
-// ----------------------------------------------------
-// 3.4 – Delete a person
-// ----------------------------------------------------
+// 3.4 – Delete person
 app.delete("/api/persons/:id", (request, response) => {
-  const id = request.params.id;
-
-  persons = persons.filter((p) => p.id !== id);
-
-  // 204 = successful but no content returned
+  persons = persons.filter((p) => p.id !== request.params.id);
   response.status(204).end();
 });
 
-// ----------------------------------------------------
-// 3.5 & 3.6 – Add new person with validation
-// ----------------------------------------------------
+// 3.5 & 3.6 – Add person with validation
 app.post("/api/persons", (request, response) => {
-  const body = request.body;
+  const { name, number } = request.body;
 
-  // Validation: missing name or number
-  if (!body.name || !body.number) {
+  if (!name || !number) {
     return response.status(400).json({
       error: "name or number missing",
     });
   }
 
-  // Validation: name must be unique
-  const nameExists = persons.some((p) => p.name === body.name);
+  const nameExists = persons.some((p) => p.name === name);
   if (nameExists) {
     return response.status(400).json({
       error: "name must be unique",
@@ -78,26 +83,23 @@ app.post("/api/persons", (request, response) => {
 
   const newPerson = {
     id: Math.floor(Math.random() * 1000000).toString(),
-    name: body.name,
-    number: body.number,
+    name,
+    number,
   };
 
   persons = persons.concat(newPerson);
   response.json(newPerson);
 });
 
-// ----------------------------------------------------
-// 3.6 – Unknown endpoint handler
-// (must be last!)
-// ----------------------------------------------------
+// --------------------
+// Unknown endpoint (3.6)
+// --------------------
 app.use((request, response) => {
-  response.status(404).json({
-    error: "unknown endpoint",
-  });
+  response.status(404).json({ error: "unknown endpoint" });
 });
 
-// ----------------------------------------------------
-const PORT = 3001;
+// --------------------
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
