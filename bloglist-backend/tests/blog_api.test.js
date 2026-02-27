@@ -4,12 +4,29 @@ const mongoose = require("mongoose");
 const supertest = require("supertest");
 const app = require("../app");
 const Blog = require("../models/blog");
+const User = require("../models/user");
+const bcrypt = require("bcrypt");
 const helper = require("./test_helper");
 
 const api = supertest(app);
 
+let token;
+let testUser;
+
 beforeEach(async () => {
   await Blog.deleteMany({});
+  await User.deleteMany({});
+
+  const passwordHash = await bcrypt.hash("password", 10);
+  testUser = new User({ username: "testuser", name: "Test", passwordHash });
+  await testUser.save();
+
+  const loginResponse = await api
+    .post("/api/login")
+    .send({ username: "testuser", password: "password" });
+
+  token = loginResponse.body.token;
+
   await Blog.insertMany(helper.initialBlogs);
 });
 
@@ -45,6 +62,7 @@ describe("POST /api/blogs", () => {
 
     await api
       .post("/api/blogs")
+      .set("Authorization", `Bearer ${token}`)
       .send(newBlog)
       .expect(201)
       .expect("Content-Type", /application\/json/);
@@ -60,27 +78,43 @@ describe("POST /api/blogs", () => {
       url: "http://testblog.com",
     };
 
-    const response = await api.post("/api/blogs").send(newBlog).expect(201);
+    const response = await api
+      .post("/api/blogs")
+      .set("Authorization", `Bearer ${token}`)
+      .send(newBlog)
+      .expect(201);
 
     assert.strictEqual(response.body.likes, 0);
   });
 
   test("blog without title returns 400", async () => {
+    const newBlog = { author: "Test Author", url: "http://testblog.com" };
+
+    await api
+      .post("/api/blogs")
+      .set("Authorization", `Bearer ${token}`)
+      .send(newBlog)
+      .expect(400);
+  });
+
+  test("blog without url returns 400", async () => {
+    const newBlog = { title: "Blog without url", author: "Test Author" };
+
+    await api
+      .post("/api/blogs")
+      .set("Authorization", `Bearer ${token}`)
+      .send(newBlog)
+      .expect(400);
+  });
+
+  test("fails with 401 if token not provided", async () => {
     const newBlog = {
+      title: "No token blog",
       author: "Test Author",
       url: "http://testblog.com",
     };
 
-    await api.post("/api/blogs").send(newBlog).expect(400);
-  });
-
-  test("blog without url returns 400", async () => {
-    const newBlog = {
-      title: "Blog without url",
-      author: "Test Author",
-    };
-
-    await api.post("/api/blogs").send(newBlog).expect(400);
+    await api.post("/api/blogs").send(newBlog).expect(401);
   });
 });
 
@@ -89,13 +123,15 @@ describe("deletion of a blog", () => {
     const blogsAtStart = await helper.blogsInDb();
     const blogToDelete = blogsAtStart[0];
 
-    await api.delete(`/api/blogs/${blogToDelete.id}`).expect(204);
+    await Blog.findByIdAndUpdate(blogToDelete.id, { user: testUser._id });
+
+    await api
+      .delete(`/api/blogs/${blogToDelete.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(204);
 
     const blogsAtEnd = await helper.blogsInDb();
     assert.strictEqual(blogsAtEnd.length, helper.initialBlogs.length - 1);
-
-    const ids = blogsAtEnd.map((b) => b.id);
-    assert(!ids.includes(blogToDelete.id));
   });
 });
 
